@@ -1,4 +1,4 @@
-# hcs-changelog README
+# manage-changelog README
 
 This is the README for your extension "hcs-changelog". After writing up a brief description, we recommend including the following sections.
 
