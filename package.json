@@ -1,6 +1,6 @@
 {
-  "name": "hcs-changelog",
-  "displayName": "hcs-changelog",
+  "name": "manage-changelog",
+  "displayName": "manage-changelog",
   "description": "Manage a changelog",
   "version": "0.0.1",
   "engines": {
@@ -10,15 +10,20 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:hcs-changelog.addChange"
+    "onCommand:manage-changelog.addChange"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "hcs-changelog.addChange",
-        "title": "Add Change to current release",
-        "category": "HCS ChangeLog"
+        "command": "manage-changelog.addChange",
+        "title": "Add Change to unreleased changes",
+        "category": "ChangeLog"
+      },
+      {
+        "command": "manage-changelog.createRelease",
+        "title": "Create release that follows the semver",
+        "category": "ChangeLog"
       }
     ]
   },

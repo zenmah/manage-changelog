@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import * as mkdirp from "mkdirp";
 import { Change, IChange } from "./Change";
+import { Release, IRelease } from "./Release";
 
 const versionTypes = ["major", "minor", "patch"];
 const changeTypes = ["new", "change", "removed", "fix"];
@@ -10,20 +10,11 @@ const changeCategories = ["NAV-Content", "AX-Content", "Application"];
 
 const const_ChangeLogFolder = ".changelog";
 
-let currentVersion = "0.0.0";
+const unreleasedFileName = "unreleased";
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
-  // Use the console to output diagnostic information (console.log) and errors (console.error)
-  // This line of code will only be executed once when your extension is activated
-  console.log('Congratulations, your extension "hcs-changelog" is now active!');
-
-  // The command has been defined in the package.json file
-  // Now provide the implementation of the command with registerCommand
-  // The commandId parameter must match the command field in package.json
-  let disposable = vscode.commands.registerCommand(
-    "hcs-changelog.addChange",
+  let addChange = vscode.commands.registerCommand(
+    "manage-changelog.addChange",
     async () => {
       if (vscode.workspace.workspaceFolders) {
         let workspaceFolder = vscode.workspace.workspaceFolders[0];
@@ -34,7 +25,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
         let change: Change = await getChangeFromUser();
         if (change.isValid()) {
-          saveChangeToCurrentRelease(changelogFolderPath, change);
+          saveUnreleasedChange(changelogFolderPath, change);
         }
       } else {
         vscode.window.showErrorMessage(
@@ -43,7 +34,80 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }
   );
-  context.subscriptions.push(disposable);
+  let createRelease = vscode.commands.registerCommand(
+    "manage-changelog.createRelease",
+    async () => {
+      let changelogFolderPath = getChangeLogFolderPath();
+      if (!changelogFolderPath) {
+        vscode.window.showErrorMessage(
+          "Not in a workspace, please open a workspace first."
+        );
+        return;
+      }
+      let release = await getNewRelease();
+      if (release) {
+        let unreleasedChanges = getUnreleasedChanges();
+        saveReleaseWithChanges(changelogFolderPath, release, unreleasedChanges);
+        clearUnreleasedChanges(changelogFolderPath);
+      }
+    }
+  );
+
+  context.subscriptions.push(addChange);
+
+  context.subscriptions.push(createRelease);
+}
+
+function getUnreleasedChanges(): IChange[] {
+  return [];
+}
+function clearUnreleasedChanges(folderPath: string): void {
+  let path = getUnreleasedFilePath(folderPath);
+  if (path && fs.existsSync(path)) {
+    fs.truncateSync(path);
+  }
+}
+
+function getCurrentRelease(): IRelease {
+  return new Release();
+}
+async function getNewRelease(): Promise<IRelease | undefined> {
+  let release = getCurrentRelease();
+  let newVersionType = await vscode.window.showQuickPick(versionTypes);
+
+  switch (newVersionType) {
+    case "major":
+      release.increaseMajor();
+      return release;
+    case "minor":
+      release.increaseMinor();
+      return release;
+    case "patch":
+      let newPatch = await vscode.window.showInputBox();
+      if (newPatch) {
+        release.patch = newPatch;
+      }
+      return release;
+    default:
+      return undefined;
+  }
+}
+
+function getChangeLogFolderPath(): string | undefined {
+  if (vscode.workspace.workspaceFolders) {
+    let workspaceFolder = vscode.workspace.workspaceFolders[0];
+    let changelogFolderPath = path.join(
+      workspaceFolder.uri.fsPath,
+      const_ChangeLogFolder
+    );
+    return changelogFolderPath;
+  } else {
+    return undefined;
+  }
+}
+
+function getUnreleasedFilePath(folderPath: string): string {
+  return path.join(folderPath, `${unreleasedFileName}.json`);
 }
 
 async function getChangeFromUser() {
@@ -55,38 +119,55 @@ async function getChangeFromUser() {
   return change;
 }
 
-function saveChangeToCurrentRelease(folderPath: string, change: IChange) {
-  //vscode.workspace
+function saveUnreleasedChange(folderPath: string, change: IChange) {
   if (!fs.existsSync(folderPath)) {
     fs.mkdirSync(folderPath, { recursive: true });
   }
-  let filePath = path.join(folderPath, `${currentVersion}.json`);
-
-  fs.createWriteStream(filePath);
+  let filePath = getUnreleasedFilePath(folderPath);
 
   fs.exists(filePath, function(exists) {
     let changes: IChange[] = [];
     if (exists) {
-      fs.readFile(filePath, function readFileCallback(err, data) {
-        if (err) {
-          console.log(err);
-        } else {
+      var readStream = fs.createReadStream(filePath, "utf8");
+      var data = "";
+      readStream
+        .on("data", function(chunk) {
+          data += chunk;
+        })
+        .on("end", function() {
           try {
-            changes = JSON.parse(data.toString());
-          } catch {
+            changes = JSON.parse(data);
+          } catch (err) {
             vscode.window.showErrorMessage(
-              `Changelog ${filePath} contains invalid JSON format, discarding previous entries`
+              `Changelog ${filePath} contains invalid JSON format, discarding previous entries, ${err}`
             );
           }
           changes.push(change);
           writeChanges(filePath, changes);
-        }
-      });
+          console.log(data);
+        });
     } else {
       changes.push(change);
       writeChanges(filePath, changes);
     }
   });
+}
+
+function saveReleaseWithChanges(
+  changeLogFolderPath: fs.PathLike,
+  release: IRelease,
+  unreleasedChanges: IChange[]
+) {
+  let releaseFilePath = path.join(
+    changeLogFolderPath.toString(),
+    `${release.toString()}.json`
+  );
+  if (fs.existsSync(releaseFilePath)) {
+    console.log(
+      `Release ${release.toString()} file already exists, overwriting changes...`
+    );
+  }
+  writeChanges(releaseFilePath, unreleasedChanges);
 }
 
 function writeChanges(filePath: string, changes: IChange[]) {
