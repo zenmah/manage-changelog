@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { Change, IChange } from "./Change";
 import { Release, IRelease } from "./Release";
+import { Guid } from "./Utils/Guid";
 
 const versionTypes = ["major", "minor", "patch"];
 const changeTypes = ["new", "change", "removed", "fix"];
@@ -10,7 +11,7 @@ const changeCategories = ["NAV-Content", "AX-Content", "Application"];
 
 const const_ChangeLogFolder = ".changelog";
 
-const unreleasedFileName = "unreleased";
+const unreleasedFolderName = "unreleased";
 
 export function activate(context: vscode.ExtensionContext) {
   let addChange = vscode.commands.registerCommand(
@@ -107,7 +108,7 @@ function getChangeLogFolderPath(): string | undefined {
 }
 
 function getUnreleasedFilePath(folderPath: string): string {
-  return path.join(folderPath, `${unreleasedFileName}.json`);
+  return path.join(folderPath, unreleasedFolderName, `${Guid.newGuid()}.json`);
 }
 
 async function getChangeFromUser() {
@@ -120,37 +121,13 @@ async function getChangeFromUser() {
 }
 
 function saveUnreleasedChange(folderPath: string, change: IChange) {
-  if (!fs.existsSync(folderPath)) {
-    fs.mkdirSync(folderPath, { recursive: true });
-  }
   let filePath = getUnreleasedFilePath(folderPath);
+  let unreleasedFolder = path.dirname(filePath);
 
-  fs.exists(filePath, function(exists) {
-    let changes: IChange[] = [];
-    if (exists) {
-      var readStream = fs.createReadStream(filePath, "utf8");
-      var data = "";
-      readStream
-        .on("data", function(chunk) {
-          data += chunk;
-        })
-        .on("end", function() {
-          try {
-            changes = JSON.parse(data);
-          } catch (err) {
-            vscode.window.showErrorMessage(
-              `Changelog ${filePath} contains invalid JSON format, discarding previous entries, ${err}`
-            );
-          }
-          changes.push(change);
-          writeChanges(filePath, changes);
-          console.log(data);
-        });
-    } else {
-      changes.push(change);
-      writeChanges(filePath, changes);
-    }
-  });
+  if (!fs.existsSync(unreleasedFolder)) {
+    fs.mkdirSync(unreleasedFolder, { recursive: true });
+  }
+  writeChange(filePath, change);
 }
 
 function saveReleaseWithChanges(
@@ -172,6 +149,15 @@ function saveReleaseWithChanges(
 
 function writeChanges(filePath: string, changes: IChange[]) {
   var json = JSON.stringify(changes);
+  fs.writeFile(filePath, json, { encoding: "utf-8", flag: "w" }, err => {
+    if (err) {
+      vscode.window.showErrorMessage("Failed to save, " + err.message);
+    }
+  });
+}
+
+function writeChange(filePath: string, change: IChange) {
+  var json = JSON.stringify(change);
   fs.writeFile(filePath, json, { encoding: "utf-8", flag: "w" }, err => {
     if (err) {
       vscode.window.showErrorMessage("Failed to save, " + err.message);
