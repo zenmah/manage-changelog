@@ -10,7 +10,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:manage-changelog.addChange"
+    "onCommand:manage-changelog.addChange",
+    "onCommand:manage-changelog.createRelease"
   ],
   "main": "./out/extension.js",
   "contributes": {

@@ -4,6 +4,7 @@ import * as fs from "fs";
 import { Change, IChange } from "./Change";
 import { Release, IRelease } from "./Release";
 import { Guid } from "./Utils/Guid";
+import { asyncForEach } from "./Utils/asyncFunctions";
 
 const versionTypes = ["major", "minor", "patch"];
 const changeTypes = ["new", "change", "removed", "fix"];
@@ -47,9 +48,9 @@ export function activate(context: vscode.ExtensionContext) {
       }
       let release = await getNewRelease();
       if (release) {
-        let unreleasedChanges = getUnreleasedChanges();
+        let unreleasedChanges = await getUnreleasedChanges(changelogFolderPath);
         saveReleaseWithChanges(changelogFolderPath, release, unreleasedChanges);
-        clearUnreleasedChanges(changelogFolderPath);
+        //clearUnreleasedChanges(changelogFolderPath);
       }
     }
   );
@@ -59,11 +60,53 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(createRelease);
 }
 
-function getUnreleasedChanges(): IChange[] {
-  return [];
+async function getUnreleasedChanges(folderPath: string): Promise<IChange[]> {
+  let unreleasedFolderPath = getUnreleasedFolderPath(folderPath);
+  let changes: IChange[] = [];
+  if (fs.existsSync(unreleasedFolderPath)) {
+    let files = fs.readdirSync(unreleasedFolderPath);
+    await asyncForEach(files, async (fileName: any) => {
+      let change = await ReadUnreleasedChangeFile(
+        unreleasedFolderPath,
+        fileName
+      );
+      if (change) {
+        changes.push(change);
+      }
+    });
+    // probably pass changes in callback?
+    console.log(changes);
+  }
+  return changes;
 }
+
+async function ReadUnreleasedChangeFile(
+  unreleasedFolderPath: string,
+  fileName: string
+): Promise<IChange | undefined> {
+  let filePath = path.join(unreleasedFolderPath, fileName);
+  try {
+    let fileContent = await readFile(filePath);
+    return JSON.parse(fileContent) as IChange;
+  } catch (err) {
+    console.log(`failed to parse {filePath}, ${err}`);
+  }
+}
+function readFile(filePath: string): Promise<string> {
+  return new Promise<string>(resolve => {
+    let data = "";
+    let readStream = fs.createReadStream(filePath);
+    readStream.on("data", function(chunk) {
+      data += chunk;
+    });
+    readStream.on("end", function() {
+      resolve(data);
+    });
+  });
+}
+
 function clearUnreleasedChanges(folderPath: string): void {
-  let path = getUnreleasedFilePath(folderPath);
+  let path = getUnreleasedFolderPath(folderPath);
   if (path && fs.existsSync(path)) {
     fs.truncateSync(path);
   }
@@ -109,6 +152,10 @@ function getChangeLogFolderPath(): string | undefined {
 
 function getUnreleasedFilePath(folderPath: string): string {
   return path.join(folderPath, unreleasedFolderName, `${Guid.newGuid()}.json`);
+}
+
+function getUnreleasedFolderPath(folderPath: string): string {
+  return path.join(folderPath, unreleasedFolderName);
 }
 
 async function getChangeFromUser() {
