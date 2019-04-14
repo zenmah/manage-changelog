@@ -247,4 +247,4 @@ function saveNewRelease(release: IRelease, unreleasedChanges: IChange[]) {
 // this method is called when your extension is deactivated
 export function deactivate() {}
 // exports for tests
-//export { mapStringToRelease };
+export { mapStringToRelease };
